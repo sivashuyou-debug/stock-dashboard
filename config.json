@@ -1,0 +1,25 @@
+{
+  "market_news_queries": ["株式市場", "日経平均", "米国株", "為替 円相場"],
+  "tickers": [
+    {"symbol": "^N225",  "name": "日経平均",       "group": "指数",   "news": "日経平均"},
+    {"symbol": "1306.T", "name": "TOPIX連動ETF",   "group": "指数",   "news": "TOPIX"},
+    {"symbol": "^GSPC",  "name": "S&P 500",        "group": "指数",   "news": "S&P500"},
+    {"symbol": "^IXIC",  "name": "NASDAQ総合",     "group": "指数",   "news": "ナスダック"},
+    {"symbol": "^DJI",   "name": "NYダウ",         "group": "指数",   "news": "NYダウ"},
+    {"symbol": "JPY=X",  "name": "ドル円",         "group": "為替",   "news": "ドル円"},
+    {"symbol": "^TNX",   "name": "米10年国債利回り", "group": "市場指標", "news": "米国債 利回り", "desc": "アメリカの長期金利。上がると株には逆風になりやすい"},
+    {"symbol": "^VIX",   "name": "VIX（恐怖指数）", "group": "市場指標", "news": "VIX 恐怖指数", "desc": "投資家の不安の大きさ。20超で不安が強め、30超でかなり強い"},
+    {"symbol": "GC=F",   "name": "金（ゴールド）",  "group": "市場指標", "news": "金価格", "desc": "不安なときに買われやすい資産（1オンスあたりドル）"},
+    {"symbol": "CL=F",   "name": "原油（WTI）",    "group": "市場指標", "news": "原油価格", "desc": "景気や物価に影響する（1バレルあたりドル）"},
+    {"symbol": "7203.T", "name": "トヨタ自動車",   "group": "日本株", "news": "トヨタ 株価"},
+    {"symbol": "6758.T", "name": "ソニーグループ", "group": "日本株", "news": "ソニーグループ 株価"},
+    {"symbol": "9984.T", "name": "ソフトバンクG",  "group": "日本株", "news": "ソフトバンクグループ 株価"},
+    {"symbol": "8306.T", "name": "三菱UFJ FG",     "group": "日本株", "news": "三菱UFJ 株価"},
+    {"symbol": "6861.T", "name": "キーエンス",     "group": "日本株", "news": "キーエンス 株価"},
+    {"symbol": "AAPL",   "name": "Apple",          "group": "米国株", "news": "アップル 株価"},
+    {"symbol": "MSFT",   "name": "Microsoft",      "group": "米国株", "news": "マイクロソフト 株価"},
+    {"symbol": "NVDA",   "name": "NVIDIA",         "group": "米国株", "news": "エヌビディア 株価"},
+    {"symbol": "AMZN",   "name": "Amazon",         "group": "米国株", "news": "アマゾン 株価"},
+    {"symbol": "GOOGL",  "name": "Alphabet",       "group": "米国株", "news": "アルファベット グーグル 株価"}
+  ]
+}

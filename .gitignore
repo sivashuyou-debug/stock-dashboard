@@ -1,0 +1,11 @@
+# パソコン側だけで使うファイル（公開しない）
+stocks.db
+data/
+collect.log
+dashboard.html
+alert_state.json
+site/
+_site/
+__pycache__/
+run_collect.bat
+.claude/

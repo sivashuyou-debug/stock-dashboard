@@ -1,0 +1,75 @@
+# 1時間ごとに株価・ニュースを集め、アラートを送り、スマホ用ページを更新する
+name: update-dashboard
+
+on:
+  schedule:
+    - cron: "7 * * * *"   # 毎時7分（混雑時は数分〜数十分遅れることがあります）
+  workflow_dispatch:       # 手動実行用
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: dashboard
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      # 「同じ通知を何度も送らない」ための記録を前回から引き継ぐ
+      - uses: actions/cache/restore@v4
+        with:
+          path: alert_state.json
+          key: alert-state-${{ github.run_id }}
+          restore-keys: alert-state-
+
+      - name: 収集・分析・アラート
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python collect.py
+
+      - uses: actions/cache/save@v4
+        if: always() && hashFiles('alert_state.json') != ''
+        with:
+          path: alert_state.json
+          key: alert-state-${{ github.run_id }}
+
+      - name: 公開用ファイルを用意
+        run: |
+          mkdir -p _site
+          cp dashboard.html _site/index.html
+          touch _site/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+      # 60日間更新がないと GitHub が自動実行を止めるため、週1回だけ空の記録を残す
+      - name: 自動停止の防止（毎週月曜）
+        if: github.event_name == 'schedule'
+        run: |
+          if [ "$(date -u +%u)" = "1" ] && [ "$(date -u +%H)" = "00" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit --allow-empty -m "keepalive $(date -u +%F)"
+            git push
+          fi
