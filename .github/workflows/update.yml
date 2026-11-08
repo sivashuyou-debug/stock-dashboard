@@ -54,6 +54,7 @@ jobs:
         run: |
           mkdir -p _site
           cp dashboard.html _site/index.html
+          cp -r icons manifest.webmanifest _site/
           touch _site/.nojekyll
 
       - uses: actions/upload-pages-artifact@v3
