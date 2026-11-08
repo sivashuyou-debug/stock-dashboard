@@ -128,6 +128,28 @@
     padding: 9px 16px; font: inherit; font-weight: 600; cursor: pointer; }
   .hold-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
   .linkbtn { background: none; border: 0; color: var(--accent); cursor: pointer; font: inherit; font-size: 13px; padding: 0; }
+  /* 取引支援の画面 */
+  .views { margin-bottom: 14px; }
+  .regime { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .regime .panel { padding: 12px 14px; }
+  .regime .lab { font-size: 18px; font-weight: 700; margin: 2px 0 4px; }
+  .regime ul { margin: 0; padding-left: 16px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+  .tool { padding: 16px 18px; }
+  .tool h2 { margin: 0 0 4px; font-size: 18px; }
+  .tool .ranges { margin: 10px 0; }
+  .assume { margin-top: 12px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+  .assume ul { margin: 4px 0 0; padding-left: 18px; }
+  .results { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 14px 0; }
+  .results > div { background: rgba(255,255,255,.03); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; }
+  .results .k { color: var(--muted); font-size: 12px; } .results .v { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .msg { padding: 10px 12px; border-radius: 10px; background: rgba(255,181,71,.1); color: var(--warn); margin-top: 12px; line-height: 1.6; }
+  .curve svg { width: 100%; height: 70px; display: block; margin: 6px 0 12px; }
+  table.ht td .sub { color: var(--muted); font-size: 12px; }
+  table.ht td.left, table.ht th.left { text-align: left; white-space: normal; }
+  .sortable th[data-k] { cursor: pointer; }
+  .sortable th[data-k]:hover { color: var(--text); }
+  .smallbtn { background: rgba(255,255,255,.05); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 3px 9px; font: inherit; font-size: 12px; cursor: pointer; }
+  .addform textarea { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; font: inherit; }
   @media (max-width: 700px) { .addform label { flex: 1 1 40%; } .addform input, .addform select { width: 100%; } }
 </style>
 </head>
@@ -141,10 +163,18 @@
 </div>
 <div class="layout">
   <main>
-    <section class="hold panel" id="hold"></section>
-    <div class="tabs" id="tabs"></div>
-    <div class="grid" id="grid"></div>
-    <section class="detail panel" id="detail"></section>
+    <div class="tabs views" id="views"></div>
+    <div data-view="home">
+      <div class="regime" id="regime"></div>
+      <section class="hold panel" id="hold"></section>
+      <div class="tabs" id="tabs"></div>
+      <div class="grid" id="grid"></div>
+      <section class="detail panel" id="detail"></section>
+    </div>
+    <section class="tool panel" data-view="test" id="test" hidden></section>
+    <section class="tool panel" data-view="screen" id="screen" hidden></section>
+    <section class="tool panel" data-view="calc" id="calc" hidden></section>
+    <section class="tool panel" data-view="log" id="log" hidden></section>
   </main>
   <aside class="panel">
     <h3>世界のマーケットニュース</h3>
@@ -305,7 +335,8 @@ function renderDetail() {
         ${t.desc ? `<div class="muted">${esc(t.desc)}</div>` : ""}
         <div><span class="big">${fmt(t.last)}</span>
           <span class="num ${tone(t.chg)}">前日比 ${pct(t.chg)}</span>
-          <span class="muted">（${esc(t.lastDate)} 時点）</span></div></div>
+          <span class="muted">（${esc(t.lastDate)} 時点）</span></div>
+        ${t.earn ? `<div class="muted">決算予定日: ${esc(t.earn)}（Yahoo!の予定情報。変わることがあります）</div>` : ""}</div>
       <div class="ranges">${MODES.map(m => m[0] === "|" ? `<span class="sep"></span>` :
         `<button class="${m[0] === mode ? "on" : ""}" data-m="${m[0]}">${m[1]}</button>`).join("")}</div>
     </div>
@@ -330,18 +361,12 @@ function renderDetail() {
           : `<div class="empty">データが足りないため判定できません</div>`}
       </div>
       <div><h3>${esc(t.name)} の関連ニュース</h3><ul class="news">${newsList(t.news)}</ul></div>
-    </div>`;
+    </div>
+    ${btItem(t.symbol) ? `<h3 style="margin-top:16px">この銘柄のサインの過去成績（買ってから20営業日後に売った場合）</h3>
+      ${btTable([btItem(t.symbol)], 20, btAmount, false)}
+      <div class="muted" style="margin-top:6px">1銘柄だけだと回数が少なく、偶然の影響を受けやすい数字です。前提は「サイン検証」の画面をご覧ください。</div>` : ""}`;
   el.querySelectorAll(".ranges button").forEach(b => b.onclick = () => { mode = b.dataset.m; renderDetail(); });
   drawCharts(t);
-}
-
-if (!DATA) {
-  document.getElementById("grid").innerHTML = `<div class="empty">データがありません。collect.py を実行してください。</div>`;
-} else {
-  document.getElementById("updated").textContent = "最終更新: " + DATA.generated + "（1時間ごとに自動更新）";
-  document.getElementById("mnews").innerHTML = newsList(DATA.marketNews);
-  selected = DATA.tickers[0]?.symbol;
-  renderTabs(); renderGrid(); renderDetail();
 }
 
 // ---------------------------------------------------------------- 保有株（この端末のブラウザ内だけに保存）
@@ -351,6 +376,17 @@ const isJPY = s => s.endsWith(".T") || s === "^N225";
 const yen = v => v == null ? "—" : "¥" + Math.round(v).toLocaleString("ja-JP");
 const signedYen = v => v == null ? "—" : (v > 0 ? "+" : v < 0 ? "−" : "") + "¥" + Math.abs(Math.round(v)).toLocaleString("ja-JP");
 
+const quote = s => DATA.tickers.find(x => x.symbol === s) || (DATA.screen || []).find(x => x.symbol === s);
+function symbolOptions(sel) {
+  const main = DATA.tickers.filter(t => !["為替", "市場指標"].includes(t.group) && !t.symbol.startsWith("^"));
+  const ms = new Set(main.map(t => t.symbol));
+  const opt = t => `<option value="${esc(t.symbol)}" ${t.symbol === sel ? "selected" : ""}>${esc(t.name)}（${isJPY(t.symbol) ? "円" : "ドル"}）</option>`;
+  const rest = (DATA.screen || []).filter(t => !ms.has(t.symbol));
+  return `<optgroup label="監視銘柄">${main.map(opt).join("")}</optgroup>` +
+    (rest.length ? `<optgroup label="その他の国内株">${rest.map(opt).join("")}</optgroup>` : "");
+}
+
+const encodeCode = v => btoa(unescape(encodeURIComponent(JSON.stringify(v))));
 function renderHold() {
   if (!DATA) return;
   const el = document.getElementById("hold");
@@ -358,8 +394,8 @@ function renderHold() {
   const usdjpy = DATA.tickers.find(t => t.symbol === "JPY=X")?.last || null;
   let totCost = 0, totVal = 0, dayPL = 0;
   const rows = list.map((h, i) => {
-    const t = DATA.tickers.find(x => x.symbol === h.symbol);
-    if (!t || t.last == null) return `<tr><td>${esc(h.symbol)}</td><td colspan="6" class="muted">データなし</td><td><button class="del" data-i="${i}" title="削除">×</button></td></tr>`;
+    const t = quote(h.symbol);
+    if (!t || t.last == null) return `<tr><td>${esc(h.symbol)}</td><td colspan="7" class="muted">データなし</td><td><button class="del" data-i="${i}" title="削除">×</button></td></tr>`;
     const fx = isJPY(h.symbol) ? 1 : usdjpy;
     const cost = h.price * h.qty, val = t.last * h.qty, pl = val - cost, rate = (t.last / h.price - 1) * 100;
     const prev = t.chg != null ? t.last / (1 + t.chg / 100) : null;
@@ -371,21 +407,22 @@ function renderHold() {
       <td class="${tone(t.chg)}">${pct(t.chg)}</td>
       <td>${fx ? yen(val * fx) : "—"}</td>
       <td class="${tone(pl)}">${fx ? signedYen(pl * fx) : "—"}<div class="muted ${tone(rate)}" style="font-size:12px">${pct(rate)}</div></td>
+      <td><span class="${h.stop && t.last <= h.stop ? "down" : ""}">${h.stop ? cur + fmt(h.stop) : "—"}</span> / <span class="${h.target && t.last >= h.target ? "up" : ""}">${h.target ? cur + fmt(h.target) : "—"}</span>
+        <div><button class="smallbtn edit" data-i="${i}">変更</button></div></td>
       <td><button class="del" data-i="${i}" title="削除">×</button></td></tr>`;
   }).join("");
   const totPL = totVal - totCost, totRate = totCost ? (totVal / totCost - 1) * 100 : null;
-  const opts = DATA.tickers.filter(t => !["為替", "市場指標"].includes(t.group) && !t.symbol.startsWith("^"))
-    .map(t => `<option value="${esc(t.symbol)}">${esc(t.name)}（${isJPY(t.symbol) ? "円" : "ドル"}）</option>`).join("");
+  const opts = symbolOptions();
   el.innerHTML = `
     <div class="hold-head"><h3 style="margin:0">わたしの保有株</h3>
-      <span><button class="linkbtn" id="h-exp">別の端末へ移す</button>　<button class="linkbtn" id="h-imp">移されたデータを読み込む</button></span></div>
+      <span><button class="linkbtn" id="h-notify">通知用コードを作る</button>　<button class="linkbtn" id="h-exp">別の端末へ移す</button>　<button class="linkbtn" id="h-imp">移されたデータを読み込む</button></span></div>
     ${list.length ? `
     <div class="sum">
       <div><div class="k">評価額（円換算）</div><div class="v">${yen(totVal)}</div></div>
       <div><div class="k">損益合計</div><div class="v ${tone(totPL)}">${signedYen(totPL)}</div><div class="muted ${tone(totRate)}">${pct(totRate)}</div></div>
       <div><div class="k">今日の増減</div><div class="v ${tone(dayPL)}">${signedYen(dayPL)}</div></div>
     </div>
-    <div class="tbl-wrap"><table class="ht"><thead><tr><th>銘柄</th><th>株数</th><th>買値</th><th>現在値</th><th>前日比</th><th>評価額</th><th>損益</th><th></th></tr></thead>
+    <div class="tbl-wrap"><table class="ht"><thead><tr><th>銘柄</th><th>株数</th><th>買値</th><th>現在値</th><th>前日比</th><th>評価額</th><th>損益</th><th>損切り / 目標</th><th></th></tr></thead>
       <tbody>${rows}</tbody></table></div>
     <div class="muted" style="margin-top:6px">米国株は ドル円 ${usdjpy ? fmt(usdjpy) : "—"} 円で円に換算。行をタップするとチャートを表示します。</div>`
     : `<div class="muted" style="margin:8px 0">持っている株を登録すると、損益を自動で計算します。入力した内容はこの端末のブラウザの中だけに保存され、ネットには送られません。</div>`}
@@ -393,13 +430,42 @@ function renderHold() {
       <label>銘柄<select id="h-sym">${opts}</select></label>
       <label>買値（1株あたり）<input id="h-price" type="number" inputmode="decimal" min="0" step="any" placeholder="例 3200"></label>
       <label>株数<input id="h-qty" type="number" inputmode="numeric" min="0" step="any" placeholder="例 100"></label>
+      <label>損切り価格（任意）<input id="h-stop" type="number" inputmode="decimal" min="0" step="any"></label>
+      <label>目標価格（任意）<input id="h-target" type="number" inputmode="decimal" min="0" step="any"></label>
       <button class="btn" id="h-add">追加</button>
     </div>`;
   el.querySelector("#h-add").onclick = () => {
     const symbol = el.querySelector("#h-sym").value;
     const price = parseFloat(el.querySelector("#h-price").value), qty = parseFloat(el.querySelector("#h-qty").value);
     if (!(price > 0) || !(qty > 0)) { alert("買値と株数を正しく入力してください"); return; }
-    const h = loadHold(); h.push({ symbol, price, qty }); saveHold(h); renderHold();
+    const stop = parseFloat(el.querySelector("#h-stop").value), target = parseFloat(el.querySelector("#h-target").value);
+    const row = { symbol, price, qty };
+    if (stop > 0) row.stop = stop;
+    if (target > 0) row.target = target;
+    const h = loadHold(); h.push(row); saveHold(h); renderHold();
+  };
+  el.querySelectorAll(".edit").forEach(b => b.onclick = e => {
+    e.stopPropagation();
+    const h = loadHold(), row = h[+b.dataset.i];
+    const stop = prompt("損切り価格（なしの場合は空欄）", row.stop ?? "");
+    if (stop === null) return;
+    const target = prompt("目標価格（なしの場合は空欄）", row.target ?? "");
+    if (target === null) return;
+    const s = parseFloat(stop), g = parseFloat(target);
+    if (s > 0) row.stop = s; else delete row.stop;
+    if (g > 0) row.target = g; else delete row.target;
+    saveHold(h); renderHold();
+  });
+  el.querySelector("#h-notify").onclick = async () => {
+    const rules = [];
+    loadHold().forEach(h => {
+      if (h.stop) rules.push({ symbol: h.symbol, below: h.stop, memo: "損切りライン" });
+      if (h.target) rules.push({ symbol: h.symbol, above: h.target, memo: "目標価格" });
+    });
+    if (!rules.length) { alert("先に「変更」から損切り価格か目標価格を入れてください"); return; }
+    const code = encodeCode(rules);
+    try { await navigator.clipboard.writeText(code); alert("通知用コードをコピーしました。Claude のチャットに貼り付けて「通知に登録して」と伝えてください。株数と買値は含まれていません。"); }
+    catch { prompt("このコードをコピーして、Claude のチャットに貼り付けてください", code); }
   };
   el.querySelectorAll(".del").forEach(b => b.onclick = e => {
     e.stopPropagation();
@@ -407,11 +473,12 @@ function renderHold() {
     const h = loadHold(); h.splice(+b.dataset.i, 1); saveHold(h); renderHold();
   });
   el.querySelectorAll("tr[data-s]").forEach(r => r.onclick = () => {
+    if (!DATA.tickers.some(t => t.symbol === r.dataset.s)) return;  // 絞り込み用の銘柄はチャートなし
     selected = r.dataset.s; renderGrid(); renderDetail();
     document.getElementById("detail").scrollIntoView({ behavior: "smooth", block: "start" });
   });
   el.querySelector("#h-exp").onclick = async () => {
-    const code = btoa(unescape(encodeURIComponent(JSON.stringify(loadHold()))));
+    const code = encodeCode({ v: 2, holdings: loadHold(), trades: loadTrades() });
     try { await navigator.clipboard.writeText(code); alert("移行用のコードをコピーしました。もう一方の端末で「移されたデータを読み込む」を押して貼り付けてください。"); }
     catch { prompt("このコードをコピーして、もう一方の端末に貼り付けてください", code); }
   };
@@ -419,14 +486,313 @@ function renderHold() {
     const code = prompt("移行用のコードを貼り付けてください（今の登録内容は置き換わります）");
     if (!code) return;
     try {
-      const h = JSON.parse(decodeURIComponent(escape(atob(code.trim()))));
+      const data = JSON.parse(decodeURIComponent(escape(atob(code.trim()))));
+      const h = Array.isArray(data) ? data : data.holdings;  // 古い形式のコードも読めるように
       if (!Array.isArray(h)) throw 0;
-      saveHold(h.filter(x => x && x.symbol && x.price > 0 && x.qty > 0)); renderHold();
+      saveHold(h.filter(x => x && x.symbol && x.price > 0 && x.qty > 0));
+      if (Array.isArray(data.trades)) saveTrades(data.trades.filter(validTrade));
+      renderHold(); renderLog();
     } catch { alert("コードが正しくありません"); }
   };
 }
 
-renderHold();
+// ---------------------------------------------------------------- 相場全体の判定
+function renderRegime() {
+  const soonLimit = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+  const held = new Set(loadHold().map(h => h.symbol));
+  const main = new Set(DATA.tickers.map(t => t.symbol));
+  const soon = (DATA.screen || []).filter(s => s.earn && s.earn <= soonLimit && (main.has(s.symbol) || held.has(s.symbol)))
+    .sort((a, b) => a.earn.localeCompare(b.earn));
+  document.getElementById("regime").innerHTML = (DATA.regime || []).map(r => `<div class="panel">
+      <div class="muted">${esc(r.area)}の相場</div><div class="lab ${r.tone}">${esc(r.label)}</div>
+      <ul>${r.reasons.map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>`).join("") + `<div class="panel">
+      <div class="muted">2週間以内の決算予定（監視・保有銘柄）</div>
+      ${soon.length ? `<ul style="margin-top:6px">${soon.slice(0, 6).map(s => `<li>${esc(s.earn.slice(5).replace("-", "/"))}　${esc(s.name)}</li>`).join("")}</ul>` : `<div class="muted" style="margin-top:8px">予定はありません</div>`}
+    </div>`;
+}
+
+// ---------------------------------------------------------------- サインの過去検証
+let btHold = 20, btAmount = 10000, btScope = "日本株";
+const btItem = s => DATA.backtest?.items.find(i => i.symbol === s);
+const US_COST = 1.16;  // 売買手数料 0.495%×2 ＋ 売却時の為替手数料（25銭÷約150円）
+function costPct(symbol, amount) {
+  if (!isJPY(symbol)) return US_COST;
+  return Math.min(amount, Math.max(52, amount * 0.0055)) / amount * 100;  // ワン株：買付無料、売却0.55%（最低52円）
+}
+const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+const sgnPct = v => v == null || !isFinite(v) ? "—" : (v > 0 ? "+" : "") + v.toFixed(2) + "%";
+
+function btRow(items, key, hold, amount, pooled) {
+  const net = [];
+  let baseSum = 0, baseN = 0;
+  items.forEach(it => {
+    const rets = it.trades[key]?.[hold] || [], cost = costPct(it.symbol, amount);
+    rets.forEach(r => net.push(r - cost));
+    if (it.base[hold] != null && rets.length) { baseSum += (it.base[hold] - cost) * rets.length; baseN += rets.length; }
+  });
+  const n = net.length;
+  if (!n) return { n: 0 };
+  const wins = net.filter(r => r > 0), losses = net.filter(r => r <= 0);
+  const ev = mean(net), base = baseN ? baseSum / baseN : null;
+  const sd = n > 1 ? Math.sqrt(net.reduce((a, r) => a + (r - ev) ** 2, 0) / (n - 1)) : 0;
+  const t = base != null && sd ? (ev - base) / (sd / Math.sqrt(n)) : 0;
+  const bar = pooled ? 3 : 2;  // まとめは同じ時期のサインが重なるので基準を厳しく
+  let verdict, vt;
+  if (n < 10) { verdict = "回数不足"; vt = "flat"; }
+  else if (t >= bar) { verdict = "平均より良い傾向"; vt = "up"; }
+  else if (t <= -bar) { verdict = "平均より悪い傾向"; vt = "down"; }
+  else { verdict = "偶然の範囲"; vt = "flat"; }
+  return { n, win: wins.length / n * 100, avgW: wins.length ? mean(wins) : null, avgL: losses.length ? mean(losses) : null,
+    ev, base, diff: base == null ? null : ev - base, worst: Math.min(...net), verdict, vt };
+}
+
+function btTable(items, hold, amount, pooled) {
+  const rows = DATA.backtest.strategies.map(st => {
+    const r = btRow(items, st.key, hold, amount, pooled);
+    if (!r.n) return `<tr><td class="left">${esc(st.name)}<div class="sub">${esc(st.help)}</div></td><td colspan="8" class="muted">この期間にサインなし</td></tr>`;
+    return `<tr><td class="left">${esc(st.name)}<div class="sub">${esc(st.help)}</div></td>
+      <td class="${tone(r.ev)}"><b>${sgnPct(r.ev)}</b><div class="sub">${amount ? signedYen(amount * r.ev / 100) : ""}</div></td>
+      <td>${sgnPct(r.base)}</td><td class="${r.vt}">${esc(r.verdict)}</td>
+      <td>${r.n}</td><td>${r.win.toFixed(0)}%</td>
+      <td class="up">${sgnPct(r.avgW)}</td><td class="down">${sgnPct(r.avgL)}</td><td class="down">${sgnPct(r.worst)}</td></tr>`;
+  }).join("");
+  return `<div class="tbl-wrap"><table class="ht" style="min-width:760px"><thead><tr>
+    <th class="left">サイン</th><th>1回の期待値</th><th>いつ買っても</th><th>判定</th><th>回数</th><th>勝率</th><th>平均の勝ち</th><th>平均の負け</th><th>最悪の1回</th>
+    </tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+function renderTest() {
+  const el = document.getElementById("test"), bt = DATA.backtest;
+  if (!bt || !bt.items.length) { el.innerHTML = `<div class="empty">検証データがありません</div>`; return; }
+  const groups = ["日本株", "米国株"].filter(g => bt.items.some(i => i.group === g));
+  const items = groups.includes(btScope) ? bt.items.filter(i => i.group === btScope) : [btItem(btScope)];
+  const pooled = groups.includes(btScope);
+  el.innerHTML = `<h2>サイン検証</h2>
+    <div class="muted">過去にこのサインで買っていたら、手数料を引いてどうなっていたかを計算します。</div>
+    <div class="addform">
+      <label>対象<select id="bt-scope">
+        ${groups.map(g => `<option value="${g}" ${g === btScope ? "selected" : ""}>${g}まとめ（${bt.items.filter(i => i.group === g).length}銘柄）</option>`).join("")}
+        ${bt.items.map(i => `<option value="${esc(i.symbol)}" ${i.symbol === btScope ? "selected" : ""}>${esc(i.name)}</option>`).join("")}
+      </select></label>
+      <label>1回の購入金額（円）<input id="bt-amount" type="number" inputmode="numeric" min="1000" step="1000" value="${btAmount}"></label>
+    </div>
+    <div class="ranges">${bt.holds.map(h => `<button class="${h === btHold ? "on" : ""}" data-h="${h}">${h}営業日後に売る</button>`).join("")}</div>
+    ${btTable(items, btHold, btAmount, pooled)}
+    <div class="assume"><b>見方：</b>「1回の期待値」が「いつ買っても」を上回っていれば、サインを待つ意味があった可能性があります。判定が「偶然の範囲」なら、差があるとは言えません。
+      <ul>
+        <li>期間：${esc(bt.from)} 〜 最新（Yahoo!ファイナンスの日足。株式分割は調整済み）</li>
+        <li>売買：サインの翌営業日の始値で買い、指定した営業日数の最終日の終値で売却。保有中の次のサインは無視</li>
+        <li>手数料：国内株はマネックスのワン株（買付無料、売却0.55%・最低52円）。米国株は売買各0.495%と売却時の為替手数料で計1.16%。NISAなら実際はこれより安くなります</li>
+        <li>含まないもの：配当、税金、米国株の為替の値動き、注文が約定しない可能性</li>
+        <li>判定：「いつ買っても」との差を統計的に比べた目安。複数銘柄のまとめは同じ時期のサインが重なるため基準を厳しくしています</li>
+        <li>注意：対象は今も上場している大型株なので、成績は良く出やすくなります。過去の結果は将来の利益を保証しません</li>
+      </ul></div>`;
+  el.querySelector("#bt-scope").onchange = e => { btScope = e.target.value; renderTest(); };
+  el.querySelector("#bt-amount").onchange = e => { const v = parseFloat(e.target.value); if (v >= 100) { btAmount = v; renderTest(); renderDetail(); } };
+  el.querySelectorAll("[data-h]").forEach(b => b.onclick = () => { btHold = +b.dataset.h; renderTest(); });
+}
+
+// ---------------------------------------------------------------- 銘柄の絞り込み
+const FILTERS = [
+  ["cheap", "1株1万円以内", s => s.need != null && s.need <= 10000],
+  ["rsi", "RSI 30以下", s => s.rsi != null && s.rsi <= 30],
+  ["up", "上昇トレンド", s => s.trend === "上昇"],
+  ["gc", "20日以内にゴールデンクロス", s => s.gcDays != null],
+  ["earn", "決算まで2週間以内", s => s.earn && s.earn <= new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10)],
+];
+let scrOn = new Set(), scrKey = "chg", scrDir = -1;
+function renderScreen() {
+  const el = document.getElementById("screen");
+  let list = (DATA.screen || []).filter(s => [...scrOn].every(k => FILTERS.find(f => f[0] === k)[2](s)));
+  list = [...list].sort((a, b) => {
+    const x = a[scrKey], y = b[scrKey];
+    if (x == null || x === "") return 1; if (y == null || y === "") return -1;
+    return (x > y ? 1 : x < y ? -1 : 0) * scrDir;
+  });
+  const cols = [["name", "銘柄"], ["last", "現在値"], ["chg", "前日比"], ["rsi", "RSI"], ["gap25", "25日線との差"], ["trend", "トレンド"], ["earn", "決算予定"], ["need", "注文に必要な目安"]];
+  el.innerHTML = `<h2>銘柄の絞り込み</h2>
+    <div class="muted">国内の大型株と監視銘柄、全${(DATA.screen || []).length}銘柄から条件で探せます。列名を押すと並び替えできます。</div>
+    <div class="ranges">${FILTERS.map(f => `<button class="${scrOn.has(f[0]) ? "on" : ""}" data-f="${f[0]}">${f[1]}</button>`).join("")}</div>
+    <div class="muted">該当 ${list.length} 銘柄</div>
+    <div class="tbl-wrap"><table class="ht sortable" style="min-width:720px"><thead><tr>
+      ${cols.map(c => `<th data-k="${c[0]}">${c[1]}${c[0] === scrKey ? (scrDir > 0 ? " ▲" : " ▼") : ""}</th>`).join("")}<th></th></tr></thead>
+      <tbody>${list.map(s => `<tr><td>${esc(s.name)}<div class="sub">${esc(s.symbol)}</div></td>
+        <td>${isJPY(s.symbol) ? "" : "$"}${fmt(s.last)}</td><td class="${tone(s.chg)}">${pct(s.chg)}</td>
+        <td class="${s.rsi != null && (s.rsi <= 30 || s.rsi >= 70) ? "warn" : ""}">${s.rsi == null ? "—" : s.rsi.toFixed(0)}</td>
+        <td class="${tone(s.gap25)}">${pct(s.gap25)}</td>
+        <td class="${s.trend === "上昇" ? "up" : s.trend === "下降" ? "down" : "flat"}">${esc(s.trend)}</td>
+        <td>${s.earn ? esc(s.earn) : "—"}</td><td>${s.need ? yen(s.need) : "—"}</td>
+        <td><button class="smallbtn" data-calc="${esc(s.symbol)}">計算</button></td></tr>`).join("") || `<tr><td colspan="9" class="muted">条件に合う銘柄はありません</td></tr>`}</tbody></table></div>
+    <div class="assume">「注文に必要な目安」は国内株1株の<b>翌営業日のストップ高価格</b>です（成行注文では、この金額の余力が必要になることがあるため）。ワン株で買える銘柄かどうかは、マネックスの注文画面でご確認ください。決算予定日はYahoo!の情報で、未定の銘柄や変更されることがあります。一覧は条件に合う銘柄を探すためのもので、買いをすすめるものではありません。</div>`;
+  el.querySelectorAll("[data-f]").forEach(b => b.onclick = () => { const k = b.dataset.f; scrOn.has(k) ? scrOn.delete(k) : scrOn.add(k); renderScreen(); });
+  el.querySelectorAll("th[data-k]").forEach(h => h.onclick = () => { const k = h.dataset.k; if (k === scrKey) scrDir = -scrDir; else { scrKey = k; scrDir = -1; } renderScreen(); });
+  el.querySelectorAll("[data-calc]").forEach(b => b.onclick = () => { calcSym = b.dataset.calc; renderCalc(); showView("calc"); });
+}
+
+// ---------------------------------------------------------------- 損切りと株数の計算
+let calcSym = null;
+function loadCalc() { try { return JSON.parse(localStorage.getItem("calc-v1") || "{}"); } catch { return {}; } }
+function saveCalc(c) { try { localStorage.setItem("calc-v1", JSON.stringify(c)); } catch {} }
+function sellFee(symbol, amount) {  // 売却時の手数料（銘柄の通貨）
+  if (!isJPY(symbol)) return amount * US_COST / 100;
+  return Math.min(amount, Math.max(52, amount * 0.0055));
+}
+function sizePosition({ symbol, buy, stop, risk, capital, rr }) {
+  const fx = isJPY(symbol) ? 1 : quote("JPY=X")?.last;
+  const riskCur = risk / fx, capCur = capital / fx;
+  const lossAt = q => (buy - stop) * q + sellFee(symbol, stop * q);
+  let q = Math.min(Math.floor(riskCur / (buy - stop)), Math.floor(capCur / buy));
+  while (q > 0 && lossAt(q) > riskCur) q--;
+  const target = buy + (buy - stop) * rr;
+  const res = { fx, q, target };
+  if (q > 0) {
+    res.amount = buy * q * fx; res.loss = lossAt(q) * fx;
+    res.profit = ((target - buy) * q - sellFee(symbol, target * q)) * fx;
+    res.breakeven = res.profit > 0 ? res.loss / (res.loss + res.profit) * 100 : null;
+  }
+  return res;
+}
+function renderCalc() {
+  const el = document.getElementById("calc");
+  const saved = loadCalc();
+  calcSym = calcSym || (DATA.screen?.[0]?.symbol);
+  const q = quote(calcSym);
+  if (!q) { el.innerHTML = `<div class="empty">データがありません</div>`; return; }
+  const atr = q.atr ?? (DATA.screen || []).find(s => s.symbol === calcSym)?.atr;
+  const round = v => isJPY(calcSym) ? Math.round(v) : Math.round(v * 100) / 100;
+  const stopDefault = atr ? round(q.last * (1 - atr * 2 / 100)) : "";
+  el.innerHTML = `<h2>損切りと株数の計算</h2>
+    <div class="muted">「1回の取引で失ってよい金額」から、買える株数を逆算します。</div>
+    <div class="addform">
+      <label>銘柄<select id="c-sym">${symbolOptions(calcSym)}</select></label>
+      <label>運用に使える資金（円）<input id="c-cap" type="number" inputmode="numeric" min="0" value="${saved.capital ?? 10000}"></label>
+      <label>1回の許容損失（円）<input id="c-risk" type="number" inputmode="numeric" min="0" value="${saved.risk ?? 500}"></label>
+      <label>買値<input id="c-buy" type="number" inputmode="decimal" min="0" step="any" value="${round(q.last)}"></label>
+      <label>損切り価格<input id="c-stop" type="number" inputmode="decimal" min="0" step="any" value="${stopDefault}"></label>
+      <label>利益と損失の比率<input id="c-rr" type="number" inputmode="decimal" min="0.1" step="0.5" value="${saved.rr ?? 2}"></label>
+    </div>
+    <div id="c-out"></div>
+    <div class="assume">損切り価格の初期値は「買値 − 1日の平均的な値動き${atr ? `（約${atr.toFixed(1)}%）` : ""}の2倍」です。株価が急に動くと、損切り価格より不利な値段で売れることがあり、損失が許容額を超える場合があります。手数料はマネックスのワン株（買付無料、売却0.55%・最低52円）、米国株は計1.16%で計算し、税金は含みません。米国株は現在のドル円で換算しています。</div>`;
+  const out = el.querySelector("#c-out");
+  const compute = () => {
+    const v = id => parseFloat(el.querySelector(id).value);
+    const inp = { symbol: calcSym, buy: v("#c-buy"), stop: v("#c-stop"), risk: v("#c-risk"), capital: v("#c-cap"), rr: v("#c-rr") };
+    saveCalc({ capital: inp.capital, risk: inp.risk, rr: inp.rr });
+    if (![inp.buy, inp.stop, inp.risk, inp.capital, inp.rr].every(x => x > 0)) { out.innerHTML = `<div class="msg">すべての欄に数字を入れてください</div>`; return; }
+    if (inp.stop >= inp.buy) { out.innerHTML = `<div class="msg">損切り価格は買値より低くしてください</div>`; return; }
+    const r = sizePosition(inp), cur = isJPY(calcSym) ? "¥" : "$";
+    if (!r.fx) { out.innerHTML = `<div class="msg">為替データがないため計算できません</div>`; return; }
+    if (!r.q) { out.innerHTML = `<div class="msg">1株でも許容損失または資金を超えます。損切り幅を狭くする、許容損失を増やす、別の銘柄にする、のいずれかが必要です。損切り幅を無理に狭くすると、普段の値動きで損切りになりやすくなります。</div>`; return; }
+    const need = isJPY(calcSym) ? (quote(calcSym).need ?? inp.buy) * r.q : null;
+    out.innerHTML = `<div class="results">
+      <div><div class="k">買える株数</div><div class="v">${r.q.toLocaleString("ja-JP")}株</div></div>
+      <div><div class="k">購入金額</div><div class="v">${yen(r.amount)}</div><div class="muted">資金の${(r.amount / inp.capital * 100).toFixed(0)}%</div></div>
+      <div><div class="k">損切りしたときの損失</div><div class="v down">${signedYen(-r.loss)}</div><div class="muted">${cur}${fmt(inp.stop)} で売却</div></div>
+      <div><div class="k">目標価格での利益</div><div class="v up">${signedYen(r.profit)}</div><div class="muted">${cur}${fmt(r.target)} で売却</div></div>
+      <div><div class="k">損益ゼロに必要な勝率</div><div class="v">${r.breakeven == null ? "—" : r.breakeven.toFixed(0) + "%"}</div></div>
+    </div>
+    ${need && need > inp.capital ? `<div class="msg">成行注文ではストップ高価格で計算した ${yen(need)} の余力が必要になることがあり、資金を超えています。</div>` : ""}
+    <button class="btn" id="c-add" style="margin-top:12px">この内容で保有株に追加</button>`;
+    out.querySelector("#c-add").onclick = () => {
+      const h = loadHold();
+      h.push({ symbol: calcSym, price: inp.buy, qty: r.q, stop: inp.stop, target: Math.round(r.target * 100) / 100 });
+      saveHold(h); renderHold(); renderRegime(); showView("home");
+      document.getElementById("hold").scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+  };
+  el.querySelectorAll("input").forEach(i => i.oninput = compute);
+  el.querySelector("#c-sym").onchange = e => { calcSym = e.target.value; renderCalc(); };
+  compute();
+}
+
+// ---------------------------------------------------------------- 取引記録（この端末のブラウザ内だけに保存）
+const REASONS = ["ゴールデンクロス", "MACDの上抜け", "RSI 30割れ", "急落後の反発狙い", "ニュース・決算", "その他"];
+function loadTrades() { try { return JSON.parse(localStorage.getItem("trades-v1") || "[]"); } catch { return []; } }
+function saveTrades(t) { try { localStorage.setItem("trades-v1", JSON.stringify(t)); } catch { alert("この端末では保存できませんでした（プライベートモードなど）"); } }
+const validTrade = x => x && x.symbol && x.buyPrice > 0 && x.sellPrice > 0 && x.qty > 0 && x.sellDate;
+function tradePL(t) {  // 手数料を引いた損益（円）
+  const fx = isJPY(t.symbol) ? 1 : quote("JPY=X")?.last || 0;
+  const fee = t.fee != null ? t.fee : sellFee(t.symbol, t.sellPrice * t.qty) * fx;  // 手入力の手数料は円
+  const yenPL = (t.sellPrice - t.buyPrice) * t.qty * fx - fee;
+  return { pl: yenPL, rate: yenPL / (t.buyPrice * t.qty * fx) * 100 };
+}
+function logStats(rows) {
+  const n = rows.length, wins = rows.filter(r => r.pl > 0), losses = rows.filter(r => r.pl <= 0);
+  return { n, win: n ? wins.length / n * 100 : null, avgW: wins.length ? mean(wins.map(r => r.pl)) : null,
+    avgL: losses.length ? mean(losses.map(r => r.pl)) : null, ev: n ? mean(rows.map(r => r.pl)) : null,
+    evRate: n ? mean(rows.map(r => r.rate)) : null, total: rows.reduce((a, r) => a + r.pl, 0) };
+}
+function renderLog() {
+  const el = document.getElementById("log");
+  const trades = loadTrades().map((t, i) => ({ ...t, i, ...tradePL(t) })).sort((a, b) => a.sellDate.localeCompare(b.sellDate));
+  const s = logStats(trades);
+  const today = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+  let cum = 0;
+  const curve = trades.length ? [0, ...trades.map(t => cum += t.pl)] : [];
+  const byReason = REASONS.map(r => [r, logStats(trades.filter(t => t.reason === r))]).filter(x => x[1].n);
+  el.innerHTML = `<h2>取引記録</h2>
+    <div class="muted">売買が終わった取引を記録すると、自分の実際の勝率と期待値を集計します。入力内容はこの端末のブラウザの中だけに保存されます。</div>
+    ${s.n ? `<div class="results">
+      <div><div class="k">取引回数</div><div class="v">${s.n}回</div></div>
+      <div><div class="k">勝率</div><div class="v">${s.win.toFixed(0)}%</div></div>
+      <div><div class="k">累計損益</div><div class="v ${tone(s.total)}">${signedYen(s.total)}</div></div>
+      <div><div class="k">1回の期待値</div><div class="v ${tone(s.ev)}">${signedYen(s.ev)}</div><div class="muted">${sgnPct(s.evRate)}</div></div>
+      <div><div class="k">平均の勝ち／負け</div><div class="v" style="font-size:15px"><span class="up">${signedYen(s.avgW)}</span> / <span class="down">${signedYen(s.avgL)}</span></div></div>
+    </div>
+    ${curve.length > 2 ? `<div class="muted">累計損益の推移（直近40回）</div><div class="curve">${spark(curve)}</div>` : ""}
+    ${byReason.length ? `<h3>買った理由ごとの成績</h3><div class="tbl-wrap"><table class="ht"><thead><tr><th>理由</th><th>回数</th><th>勝率</th><th>1回の期待値</th><th>累計</th></tr></thead>
+      <tbody>${byReason.map(([r, x]) => `<tr><td>${esc(r)}</td><td>${x.n}</td><td>${x.win.toFixed(0)}%</td><td class="${tone(x.ev)}">${signedYen(x.ev)}</td><td class="${tone(x.total)}">${signedYen(x.total)}</td></tr>`).join("")}</tbody></table></div>` : ""}
+    ${s.n < 30 ? `<div class="msg">まだ${s.n}回の記録です。30回ほどたまるまでは、勝率や期待値は偶然の影響が大きい数字として見てください。</div>` : ""}
+    ` : ""}
+    <h3 style="margin-top:16px">取引を追加</h3>
+    <div class="addform">
+      <label>銘柄<select id="l-sym">${symbolOptions()}</select></label>
+      <label>理由<select id="l-reason">${REASONS.map(r => `<option>${r}</option>`).join("")}</select></label>
+      <label>買った日<input id="l-bd" type="date" value="${today}"></label>
+      <label>買値<input id="l-bp" type="number" inputmode="decimal" min="0" step="any"></label>
+      <label>売った日<input id="l-sd" type="date" value="${today}"></label>
+      <label>売値<input id="l-sp" type="number" inputmode="decimal" min="0" step="any"></label>
+      <label>株数<input id="l-q" type="number" inputmode="numeric" min="0" step="any"></label>
+      <label>手数料・円（空欄は自動）<input id="l-fee" type="number" inputmode="numeric" min="0" step="any"></label>
+      <button class="btn" id="l-add">記録</button>
+    </div>
+    ${trades.length ? `<h3 style="margin-top:16px">履歴</h3><div class="tbl-wrap"><table class="ht"><thead><tr><th>銘柄</th><th>売った日</th><th>買値</th><th>売値</th><th>株数</th><th>損益</th><th>理由</th><th></th></tr></thead>
+      <tbody>${[...trades].reverse().map(t => `<tr><td>${esc(quote(t.symbol)?.name || t.symbol)}</td><td>${esc(t.sellDate)}</td><td>${fmt(t.buyPrice)}</td><td>${fmt(t.sellPrice)}</td><td>${t.qty}</td>
+        <td class="${tone(t.pl)}">${signedYen(t.pl)}<div class="sub">${sgnPct(t.rate)}</div></td><td>${esc(t.reason)}</td><td><button class="del" data-i="${t.i}" title="削除">×</button></td></tr>`).join("")}</tbody></table></div>` : ""}
+    <div class="assume">手数料を空欄にすると、マネックスのワン株（買付無料、売却0.55%・最低52円）または米国株の計1.16%で計算します。米国株は現在のドル円で円に換算しているため、実際の円ベースの損益とは異なります。税金と配当は含みません。</div>`;
+  el.querySelector("#l-add").onclick = () => {
+    const g = id => el.querySelector(id).value, n = id => parseFloat(g(id));
+    const row = { symbol: g("#l-sym"), reason: g("#l-reason"), buyDate: g("#l-bd"), sellDate: g("#l-sd"), buyPrice: n("#l-bp"), sellPrice: n("#l-sp"), qty: n("#l-q") };
+    if (!validTrade(row)) { alert("買値・売値・株数・売った日を正しく入力してください"); return; }
+    if (g("#l-fee") !== "") { const f = n("#l-fee"); if (!(f >= 0)) { alert("手数料を正しく入力してください"); return; } row.fee = f; }
+    const list = loadTrades(); list.push(row); saveTrades(list); renderLog();
+  };
+  el.querySelectorAll(".del").forEach(b => b.onclick = () => {
+    if (!confirm("この記録を削除しますか？")) return;
+    const list = loadTrades(); list.splice(+b.dataset.i, 1); saveTrades(list); renderLog();
+  });
+}
+
+// ---------------------------------------------------------------- 画面の切り替えと初期表示
+const VIEWS = [["home", "ホーム"], ["test", "サイン検証"], ["screen", "絞り込み"], ["calc", "損切り計算"], ["log", "取引記録"]];
+let view = "home";
+function showView(v) {
+  view = v;
+  document.getElementById("views").innerHTML = VIEWS.map(x => `<button class="${x[0] === v ? "on" : ""}" data-v="${x[0]}">${x[1]}</button>`).join("");
+  document.querySelectorAll("#views button").forEach(b => b.onclick = () => showView(b.dataset.v));
+  document.querySelectorAll("main [data-view]").forEach(e => e.hidden = e.dataset.view !== v);
+}
+
+if (!DATA) {
+  document.getElementById("grid").innerHTML = `<div class="empty">データがありません。collect.py を実行してください。</div>`;
+} else {
+  document.getElementById("updated").textContent = "最終更新: " + DATA.generated + "（1時間ごとに自動更新）";
+  document.getElementById("mnews").innerHTML = newsList(DATA.marketNews);
+  selected = DATA.tickers[0]?.symbol;
+  showView("home");
+  renderRegime(); renderTabs(); renderGrid(); renderDetail();
+  renderHold(); renderTest(); renderScreen(); renderCalc(); renderLog();
+}
 
 // 15分ごとに最新データへ再読み込み（入力中は待つ）
 const loadedAt = Date.now();

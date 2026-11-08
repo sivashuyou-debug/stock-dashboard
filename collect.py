@@ -6,8 +6,11 @@
   - 日足から移動平均・RSI・MACD を計算し、状態を文章で要約
   - CSV を data/ に書き出し、dashboard.html を再生成
 """
+import base64
+import hashlib
 import json
 import logging
+import os
 import sqlite3
 import sys
 import xml.etree.ElementTree as ET
@@ -22,11 +25,14 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import yfinance as yf
 
+import trading
+
 BASE = Path(__file__).resolve().parent
 DB_PATH = BASE / "stocks.db"
 CONFIG_PATH = BASE / "config.json"
 TEMPLATE_PATH = BASE / "dashboard_template.html"
 DASHBOARD_PATH = BASE / "dashboard.html"
+EARNINGS_PATH = BASE / "earnings_cache.json"
 CSV_DIR = BASE / "data"
 TZ = "Asia/Tokyo"
 JST = ZoneInfo(TZ)
@@ -274,24 +280,31 @@ def _r(v, n=4):
     return None if v is None or pd.isna(v) else round(float(v), n)
 
 
-def build_dashboard(conn, config):
+def _load_daily(conn, symbol):
+    d = pd.read_sql(
+        "SELECT ts, open, high, low, close, volume FROM daily WHERE symbol=? ORDER BY ts",
+        conn, params=(symbol,),
+    ).dropna(subset=["close"])
+    return indicators(d).reset_index(drop=True) if len(d) else d
+
+
+def build_dashboard(conn, config, earnings=None):
+    earnings = earnings or {}
     payload = {
         "generated": datetime.now(JST).strftime("%Y-%m-%d %H:%M"),
         "marketNews": load_news(conn, MARKET, 20),
         "tickers": [],
     }
+    frames = {}
     hourly_from = (datetime.now(JST) - timedelta(days=31)).strftime("%Y-%m-%d")
     for t in config["tickers"]:
         s = t["symbol"]
-        d = pd.read_sql(
-            "SELECT ts, open, high, low, close, volume FROM daily WHERE symbol=? ORDER BY ts",
-            conn, params=(s,),
-        ).dropna(subset=["close"])
+        d = _load_daily(conn, s)
+        frames[s] = d
         h = conn.execute(
             "SELECT ts, open, high, low, close FROM hourly WHERE symbol=? AND ts>=? ORDER BY ts",
             (s, hourly_from),
         ).fetchall()
-        d = indicators(d) if len(d) else d
         last = prev = chg = None
         if len(d) >= 1:
             last = float(d["close"].iloc[-1])
@@ -303,6 +316,7 @@ def build_dashboard(conn, config):
             **t,
             "last": last, "chg": chg,
             "lastDate": d["ts"].iloc[-1] if len(d) else "",
+            "earn": earnings.get(s, ""),
             "signals": summarize(d) if len(d) else [],
             "daily": [
                 [r.ts, _r(r.open), _r(r.high), _r(r.low), _r(r.close), _r(r.volume, 0),
@@ -312,11 +326,43 @@ def build_dashboard(conn, config):
             "hourly": [[ts, _r(o), _r(hh), _r(lo), _r(c)] for ts, o, hh, lo, c in h if c is not None],
             "news": load_news(conn, s, 8),
         })
+    add_trading_data(payload, conn, config, frames, earnings)
     html = TEMPLATE_PATH.read_text(encoding="utf-8").replace(
         "/*__DATA__*/null", json.dumps(payload, ensure_ascii=False)
     )
     DASHBOARD_PATH.write_text(html, encoding="utf-8")
     return payload
+
+
+def add_trading_data(payload, conn, config, frames, earnings):
+    """相場判定・絞り込み一覧・サインの過去検証をダッシュボード用のデータに加える。"""
+    individual = [(t["symbol"], t["name"], t["group"]) for t in config["tickers"]
+                  if t["group"] in ("日本株", "米国株")]
+    known = {x[0] for x in individual}
+    individual += [(s, n, "日本株") for s, n in config.get("screen_universe", []) if s not in known]
+
+    vix_df = frames.get("^VIX")
+    vix = float(vix_df["close"].iloc[-1]) if vix_df is not None and len(vix_df) else None
+    payload["regime"] = [r for r in (
+        trading.market_regime("日本", frames.get("^N225", pd.DataFrame()), vix),
+        trading.market_regime("米国", frames.get("^GSPC", pd.DataFrame()), vix),
+    ) if r]
+
+    screen, items, first_date = [], [], None
+    for s, name, group in individual:
+        d = frames.get(s)
+        if d is None:
+            d = _load_daily(conn, s)
+        if len(d) < trading.WARMUP + 5:
+            continue
+        screen.append(trading.screen_row(s, name, group, d, earnings.get(s, "")))
+        items.append({"symbol": s, "name": name, "group": group, **trading.backtest_item(d)})
+        first_date = min(first_date or d["ts"].iloc[0], d["ts"].iloc[0])
+    payload["screen"] = screen
+    payload["backtest"] = {
+        "holds": list(trading.HOLDS), "strategies": trading.STRATEGIES,
+        "from": first_date or "", "items": items,
+    }
 
 
 # ---------------------------------------------------------------- アラート
@@ -339,7 +385,8 @@ def find_alerts(payload, rules):
     d = rules.get("defaults", {})
     groups = set(d.get("groups", []))
     chg_th, rsi_lo, rsi_hi = d.get("daily_change_pct"), d.get("rsi_low"), d.get("rsi_high")
-    by_sym = {t["symbol"]: t for t in payload["tickers"]}
+    by_sym = {t["symbol"]: t for t in payload.get("screen", [])}
+    by_sym.update({t["symbol"]: t for t in payload["tickers"]})
     out = []
 
     for t in payload["tickers"]:
@@ -375,11 +422,46 @@ def find_alerts(payload, rules):
             line = float(rule[kind])
             hit = last <= line if kind == "below" else last >= line
             unit = "円" if t["symbol"].endswith(".T") else "ドル" if t["group"] == "米国株" else ""
-            out.append((f"{t['symbol']}|{kind}|{line}", hit,
+            key = f"{t['symbol']}|{kind}|{line}"
+            if rule.get("private"):  # 保有銘柄が記録に残らないよう、目印を読めない形にする
+                key = f"p{hashlib.sha256(key.encode()).hexdigest()[:16]}|{kind}|"
+            out.append((key, hit,
                         f"{t['name']}が{_num(line)}{unit}{word}",
                         f"現在 {_num(last)}（{t['lastDate']}）" + (f"／メモ: {rule['memo']}" if rule.get("memo") else ""),
                         "bell"))
+
+    # 決算の数日前のお知らせ（監視銘柄＋損切り・目標を登録した保有銘柄）
+    before = d.get("earnings_days_before")
+    if before:
+        today = datetime.now(JST).date()
+        private = {r["symbol"] for r in rules.get("rules", []) if r.get("private") and r.get("symbol")}
+        main_syms = {x["symbol"] for x in payload["tickers"]}
+        for sym, t in by_sym.items():
+            is_public = sym in main_syms and t["group"] in groups
+            if not t.get("earn") or not (is_public or sym in private):
+                continue
+            days = (datetime.strptime(t["earn"], "%Y-%m-%d").date() - today).days
+            if 0 <= days <= before:
+                key = f"{sym}|earn|{t['earn']}"
+                if not is_public:
+                    key = f"p{hashlib.sha256(key.encode()).hexdigest()[:16]}|earn|{t['earn']}"
+                when = "本日" if days == 0 else f"あと{days}日"
+                out.append((key, True, f"{t['name']}の決算が近づいています",
+                            f"決算予定日 {t['earn']}（{when}）。予定日は変わることがあります", "calendar"))
     return out
+
+
+def private_rules():
+    """GitHub の非公開設定に保存した、保有株ごとの損切り・目標価格を読み込む。"""
+    raw = os.environ.get("PRIVATE_ALERTS", "").strip()
+    if not raw:
+        return []
+    try:
+        data = json.loads(base64.b64decode(raw).decode("utf-8"))
+        return [{**r, "private": True} for r in data if isinstance(r, dict) and r.get("symbol")]
+    except Exception:
+        log.warning("非公開の通知設定を読み取れませんでした")  # 内容は記録に残さない
+        return []
 
 
 def send_ntfy(topic, title, body, tags):
@@ -394,11 +476,10 @@ def send_ntfy(topic, title, body, tags):
 
 
 def run_alerts(payload):
-    import os
-
     if not ALERTS_PATH.exists():
         return "alerts=none"
     rules = json.loads(ALERTS_PATH.read_text(encoding="utf-8"))
+    rules["rules"] = rules.get("rules", []) + private_rules()
     first = not STATE_PATH.exists()
     state = {} if first else json.loads(STATE_PATH.read_text(encoding="utf-8"))
     topic = os.environ.get("NTFY_TOPIC", "").strip()
@@ -437,7 +518,7 @@ def main():
     try:
         have = {r[0] for r in conn.execute("SELECT DISTINCT symbol FROM hourly")}
         hourly = fetch_prices(symbols, "5d" if set(symbols) <= have else "60d", "1h")
-        daily = fetch_prices(symbols, "2y", "1d")
+        daily = fetch_prices(symbols, "10y", "1d")  # 過去検証のため長めに取得
         notes.append(f"hourly={save_prices(conn, 'hourly', hourly, False)}")
         notes.append(f"daily={save_prices(conn, 'daily', daily, True)}")
         missing = sorted(set(symbols) - set(daily))
@@ -447,6 +528,12 @@ def main():
         ok = 0
         notes.append(f"price error: {e}")
         log.exception("株価の取得に失敗")
+    universe = [u[0] for u in config.get("screen_universe", []) if u[0] not in symbols]
+    try:  # 絞り込み用の銘柄。失敗しても監視銘柄の更新は止めない
+        notes.append(f"universe={save_prices(conn, 'daily', fetch_prices(universe, '10y', '1d'), True)}")
+    except Exception as e:
+        notes.append(f"universe error: {e}")
+        log.exception("絞り込み用銘柄の取得に失敗")
     try:
         notes.append(f"news={collect_news(conn, config)}")
     except Exception as e:
@@ -456,7 +543,13 @@ def main():
     conn.commit()
     log.info("収集完了 %s", " ".join(notes))
     export_csv(conn)
-    payload = build_dashboard(conn, config)
+    earnings = {}
+    try:
+        individual = [t["symbol"] for t in config["tickers"] if t["group"] in ("日本株", "米国株")] + universe
+        earnings = trading.load_earnings(individual, EARNINGS_PATH, datetime.now(JST).date())
+    except Exception:
+        log.exception("決算日の取得に失敗")
+    payload = build_dashboard(conn, config, earnings)
     log.info("ダッシュボード更新: %s", DASHBOARD_PATH)
     conn.close()
     try:

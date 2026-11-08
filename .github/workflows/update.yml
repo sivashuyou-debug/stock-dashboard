@@ -39,9 +39,17 @@ jobs:
           key: alert-state-${{ github.run_id }}
           restore-keys: alert-state-
 
+      # 決算予定日の取得結果（1日1回だけ取り直す）
+      - uses: actions/cache/restore@v4
+        with:
+          path: earnings_cache.json
+          key: earnings-${{ github.run_id }}
+          restore-keys: earnings-
+
       - name: 収集・分析・アラート
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          PRIVATE_ALERTS: ${{ secrets.PRIVATE_ALERTS }}
         run: python collect.py
 
       - uses: actions/cache/save@v4
@@ -49,6 +57,12 @@ jobs:
         with:
           path: alert_state.json
           key: alert-state-${{ github.run_id }}
+
+      - uses: actions/cache/save@v4
+        if: always() && hashFiles('earnings_cache.json') != ''
+        with:
+          path: earnings_cache.json
+          key: earnings-${{ github.run_id }}
 
       - name: 公開用ファイルを用意
         run: |

@@ -10,3 +10,4 @@ __pycache__/
 run_collect.bat
 .claude/
 通知の設定.txt
+earnings_cache.json

@@ -3,7 +3,8 @@
     "groups": ["指数", "日本株", "米国株"],
     "daily_change_pct": 5,
     "rsi_low": 30,
-    "rsi_high": 70
+    "rsi_high": 70,
+    "earnings_days_before": 3
   },
   "rules": [
     {"symbol": "7203.T", "below": 3000, "memo": "トヨタ 3,000円割れ"}
