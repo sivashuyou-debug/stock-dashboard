@@ -11,7 +11,8 @@ def lerp(a, b, t):
     return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
 
 
-def draw():
+def draw(box=(30, 900, 985, 40)):
+    """box = (左, 右, 下, 上) … チャートを描く範囲（1024px 基準）"""
     img = Image.new("RGB", (S, S))
     px = img.load()
     top, bottom = (22, 36, 72), (7, 9, 16)  # 濃紺 → ほぼ黒
@@ -33,7 +34,7 @@ def draw():
         (0.47, 0.43, 0.52, 0.40), (0.43, 0.58, 0.62, 0.41), (0.58, 0.54, 0.63, 0.50),
         (0.54, 0.72, 0.76, 0.52),
     ]
-    left, right, lo_y, hi_y = 110, 860, 880, 250
+    left, right, lo_y, hi_y = box
     step = (right - left) / len(candles)
     to_y = lambda v: lo_y - (lo_y - hi_y) * (v - 0.24) / 0.54
     pts = []
@@ -73,6 +74,8 @@ def main():
     img = draw()
     for name, size in [("apple-touch-icon.png", 180), ("icon-192.png", 192), ("icon-512.png", 512), ("favicon-64.png", 64)]:
         img.resize((size, size), Image.LANCZOS).save(OUT / name, optimize=True)
+    # Android の丸型などに切り抜かれる用（中央80%に収める）
+    draw((150, 830, 860, 230)).resize((512, 512), Image.LANCZOS).save(OUT / "icon-maskable-512.png", optimize=True)
     print("saved", OUT)
 
 
