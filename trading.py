@@ -122,6 +122,17 @@ def _days_since_gc(df, lookback=20):
     return None
 
 
+def fired_signals(df, lookback=5):
+    """直近 lookback 営業日以内に出た検証対象のサインと、その何営業日前かを返す。"""
+    out = {}
+    for key, mask in signal_masks(df).items():
+        for ago, hit in enumerate(mask.fillna(False).to_numpy()[-(lookback + 1):][::-1]):
+            if hit:
+                out[key] = ago
+                break
+    return out
+
+
 def screen_row(symbol, name, group, df, earn):
     last = df.iloc[-1]
     c, s25, s75, rsi = float(last["close"]), last["sma25"], last["sma75"], last["rsi"]
@@ -134,6 +145,7 @@ def screen_row(symbol, name, group, df, earn):
         "rsi": None if pd.isna(rsi) else round(float(rsi), 1),
         "gap25": None if pd.isna(s25) else round((c / s25 - 1) * 100, 2),
         "trend": trend, "gcDays": _days_since_gc(df), "atr": atr_pct(df), "earn": earn,
+        "fired": fired_signals(df),
         "need": c + limit_width(c) if jp else None,  # 翌営業日のストップ高価格
     }
 

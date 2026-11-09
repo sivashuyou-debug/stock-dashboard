@@ -143,6 +143,14 @@
   .results > div { background: rgba(255,255,255,.03); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; }
   .results .k { color: var(--muted); font-size: 12px; } .results .v { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .msg { padding: 10px 12px; border-radius: 10px; background: rgba(255,181,71,.1); color: var(--warn); margin-top: 12px; line-height: 1.6; }
+  .ask-form { display: flex; gap: 8px; margin-top: 12px; }
+  .ask-form input { flex: 1; min-width: 0; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 11px 12px; font: inherit; font-size: 16px; }
+  .ans { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .ans h3 { margin: 0; font-size: 17px; }
+  .ans h4 { margin: 14px 0 4px; font-size: 13px; color: var(--muted); font-weight: 600; }
+  .ans ul { margin: 4px 0 0; padding-left: 18px; line-height: 1.7; }
+  .ans details { margin-top: 8px; }
+  .ans summary { cursor: pointer; color: var(--accent); font-size: 13px; }
   .curve svg { width: 100%; height: 70px; display: block; margin: 6px 0 12px; }
   table.ht td .sub { color: var(--muted); font-size: 12px; }
   table.ht td.left, table.ht th.left { text-align: left; white-space: normal; }
@@ -171,6 +179,7 @@
       <div class="grid" id="grid"></div>
       <section class="detail panel" id="detail"></section>
     </div>
+    <section class="tool panel" data-view="ask" id="ask" hidden></section>
     <section class="tool panel" data-view="test" id="test" hidden></section>
     <section class="tool panel" data-view="screen" id="screen" hidden></section>
     <section class="tool panel" data-view="calc" id="calc" hidden></section>
@@ -773,11 +782,158 @@ function renderLog() {
   });
 }
 
+// ---------------------------------------------------------------- 質問箱（AIは使わず、アプリ内の数字から回答を組み立てる）
+const ASK_ALIASES = {
+  "9984.T": ["ソフトバンクグループ", "sbg"], "8306.T": ["ufj"], "9983.T": ["ファストリ", "ユニクロ"],
+  "4502.T": ["武田"], "3382.T": ["セブン"], "4689.T": ["ヤフー", "ライン"], "4661.T": ["ディズニー"],
+  "6594.T": ["日本電産"], "5401.T": ["新日鉄"], "2914.T": ["日本たばこ"], "9432.T": ["日本電信電話"],
+  "AAPL": ["アップル"], "MSFT": ["マイクロソフト"], "NVDA": ["エヌビディア"], "AMZN": ["アマゾン"],
+  "GOOGL": ["アルファベット", "グーグル", "google"],
+};
+const normAsk = s => String(s).normalize("NFKC").toLowerCase().replace(/\s/g, "");
+const ASK_SUFFIX = /(自動車|グループ|ghd|hd|fg|g|工業|製作所|製薬)$/;
+function askNames() {
+  return (DATA.screen || []).flatMap(q => {
+    const full = normAsk(q.name);
+    const names = new Set([full, full.replace(ASK_SUFFIX, ""), normAsk(q.symbol), ...(ASK_ALIASES[q.symbol] || []).map(normAsk)]);
+    return [...names].filter(n => n.length >= 2).map(n => ({ n, sym: q.symbol }));
+  });
+}
+function askFind(text) {
+  // 長い名前を優先して文章から銘柄を探す。同じ箇所に複数の候補があるときは候補のまま返す
+  const t = normAsk(text), hits = [];
+  askNames().forEach(({ n, sym }) => {
+    for (let i = t.indexOf(n); i >= 0; i = t.indexOf(n, i + 1)) hits.push({ a: i, b: i + n.length, sym });
+  });
+  for (const m of t.matchAll(/(^|\D)(\d{4})(?![\d円年株%])/g)) {
+    const sym = m[2] + ".T", a = m.index + m[1].length;
+    if (quote(sym) && (DATA.screen || []).some(q => q.symbol === sym)) hits.push({ a, b: a + 4, sym });
+  }
+  hits.sort((x, y) => (y.b - y.a) - (x.b - x.a) || x.a - y.a);
+  const spans = [];
+  hits.forEach(h => {
+    const same = spans.find(s => s.a === h.a && s.b === h.b);
+    if (same) { if (!same.syms.includes(h.sym)) same.syms.push(h.sym); return; }
+    if (!spans.some(s => h.a < s.b && s.a < h.b)) spans.push({ a: h.a, b: h.b, syms: [h.sym] });
+  });
+  return spans.sort((x, y) => x.a - y.a);
+}
+function daysUntil(iso) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const [ty, tm, td] = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10).split("-").map(Number);
+  return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(ty, tm - 1, td)) / 86400000);
+}
+function askStat(r) {
+  if (!r.n) return "サインなし";
+  return `${r.n}回・勝率${r.win.toFixed(0)}%・期待値 <b class="${tone(r.ev)}">${sgnPct(r.ev)}</b>（いつ買っても ${sgnPct(r.base)}）・${esc(r.verdict)}`;
+}
+function askAnswer(sym, sell) {
+  const q = DATA.screen.find(x => x.symbol === sym), item = btItem(sym), jp = isJPY(sym), cur = jp ? "¥" : "$";
+  const groupItems = DATA.backtest.items.filter(i => i.group === q.group);
+  const area = jp ? "日本" : "米国", reg = (DATA.regime || []).find(r => r.area === area);
+  const fired = Object.entries(q.fired || {}).sort((a, b) => a[1] - b[1]);
+  const held = loadHold().filter(h => h.symbol === sym);
+  const earnIn = q.earn ? daysUntil(q.earn) : null;
+  const notes = [];
+  if (reg && reg.label === "警戒") notes.push(`${area}の相場判定は「警戒」です`);
+  if (earnIn != null && earnIn <= 14) notes.push(`決算まであと${earnIn}日です。決算の前後は株価が大きく動きやすくなります`);
+  if (q.trend === "下降") notes.push("株価は25日・75日の平均線より下で、下降トレンドです");
+  if (q.rsi != null && q.rsi >= 70) notes.push(`RSIは${q.rsi.toFixed(0)}で、上がりすぎの目安に入っています`);
+  if (q.rsi != null && q.rsi <= 30) notes.push(`RSIは${q.rsi.toFixed(0)}で、下がりすぎの目安に入っています`);
+
+  const sigHtml = fired.length ? `<ul>${fired.map(([k, ago]) => {
+    const st = DATA.backtest.strategies.find(x => x.key === k);
+    return `<li><b>${esc(st.name)}</b>（${ago === 0 ? "最新の営業日" : ago + "営業日前"}）<br>
+      この銘柄：${askStat(btRow([item], k, 20, btAmount, false))}<br>
+      ${esc(q.group)}まとめ：${askStat(btRow(groupItems, k, 20, btAmount, true))}</li>`;
+  }).join("")}</ul>` : `<div>直近5営業日に、検証している4つのサインは出ていません。</div>`;
+
+  const baseNet = item.base[20] == null ? null : item.base[20] - costPct(sym, btAmount);
+  const heldHtml = held.length ? `<h4>あなたの保有状況</h4><ul>${held.map(h => {
+    const rate = (q.last / h.price - 1) * 100;
+    return `<li>${h.qty.toLocaleString("ja-JP")}株・買値 ${cur}${fmt(h.price)}・損益率 <span class="${tone(rate)}">${pct(rate)}</span>
+      ${h.stop ? `・損切り ${cur}${fmt(h.stop)}${q.last <= h.stop ? `（<span class="down">到達</span>）` : ""}` : ""}
+      ${h.target ? `・目標 ${cur}${fmt(h.target)}${q.last >= h.target ? `（<span class="up">到達</span>）` : ""}` : ""}</li>`;
+  }).join("")}</ul>` : "";
+
+  let sizeHtml = "";
+  if (!sell && q.atr) {
+    const c = loadCalc(), capital = c.capital ?? 10000, risk = c.risk ?? 500, rr = c.rr ?? 2;
+    const stop = jp ? Math.round(q.last * (1 - q.atr * 2 / 100)) : Math.round(q.last * (1 - q.atr * 2 / 100) * 100) / 100;
+    const r = sizePosition({ symbol: sym, buy: q.last, stop, risk, capital, rr });
+    sizeHtml = `<h4>買う場合の目安（資金${yen(capital)}・許容損失${yen(risk)}の設定）</h4>
+      <div>${r.fx && r.q ? `${r.q.toLocaleString("ja-JP")}株・購入金額 ${yen(r.amount)}／損切り価格 ${cur}${fmt(stop)}（損失 ${signedYen(-r.loss)}）`
+        : `損切り価格を ${cur}${fmt(stop)} とすると、1株でも資金または許容損失を超えます。`}</div>
+      <button class="smallbtn" data-askcalc="${esc(sym)}" style="margin-top:6px">損切り計算で詳しく見る</button>`;
+  }
+
+  return `<div class="ans">
+    <h3>${esc(q.name)} <span class="muted">${esc(q.symbol)}</span></h3>
+    <div><span class="big">${cur}${fmt(q.last)}</span> <span class="num ${tone(q.chg)}">前日比 ${pct(q.chg)}</span> <span class="muted">（${esc(q.lastDate)} 時点）</span></div>
+    ${notes.length ? `<h4>確認しておきたい点</h4><ul class="warn">${notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}
+    <h4>今の状態</h4>
+    <ul><li>トレンド：<span class="${q.trend === "上昇" ? "up" : q.trend === "下降" ? "down" : "flat"}">${esc(q.trend)}</span></li>
+      <li>RSI：${q.rsi == null ? "—" : q.rsi.toFixed(0)}（70以上は上がりすぎ、30以下は下がりすぎの目安）</li>
+      <li>25日平均との差：<span class="${tone(q.gap25)}">${pct(q.gap25)}</span></li>
+      <li>1日の平均的な値動き：${q.atr == null ? "—" : "約" + q.atr.toFixed(1) + "%"}</li></ul>
+    <h4>相場全体（${area}）</h4><div class="${reg ? reg.tone : ""}">${reg ? esc(reg.label) : "判定なし"}</div>
+    <h4>決算予定</h4><div>${q.earn ? `${esc(q.earn)}（${earnIn === 0 ? "本日" : "あと" + earnIn + "日"}）` : "予定日の情報なし"}</div>
+    <h4>直近のサインと過去の成績（買って20営業日後に売った場合）</h4>
+    ${sigHtml}
+    <div class="muted" style="margin-top:4px">この銘柄をサインに関係なく買った場合の平均：${sgnPct(baseNet)}</div>
+    <details><summary>4つのサインすべての成績を見る</summary>${btTable([item], 20, btAmount, false)}</details>
+    ${heldHtml}${sizeHtml}
+  </div>`;
+}
+function askRun(text, forced) {
+  const out = document.getElementById("ask-out");
+  try { sessionStorage.setItem("ask", text); } catch {}
+  const spans = forced ? [{ syms: [forced] }] : askFind(text);
+  if (!spans.length) {
+    out.innerHTML = `<div class="msg">質問の中から銘柄名を見つけられませんでした。「トヨタ」のような銘柄名か、「7203」のような証券コードを入れてください。答えられるのは「絞り込み」にある${(DATA.screen || []).length}銘柄です（日経平均などの指数は対象外です）。</div>`;
+    return;
+  }
+  const unclear = spans.find(s => s.syms.length > 1);
+  if (unclear) {
+    out.innerHTML = `<div class="ans"><div>どちらの銘柄ですか？</div><div class="ranges">${unclear.syms.map(s => `<button data-pick="${esc(s)}">${esc(quote(s).name)}</button>`).join("")}</div></div>`;
+    out.querySelectorAll("[data-pick]").forEach(b => b.onclick = () => askRun(text, b.dataset.pick));
+    return;
+  }
+  const sell = /売/.test(text) && !/買/.test(text);
+  out.innerHTML = spans.slice(0, 3).map(s => askAnswer(s.syms[0], sell)).join("") +
+    (spans.length > 3 ? `<div class="muted" style="margin-top:10px">一度に表示できるのは3銘柄までです。</div>` : "") +
+    `<div class="assume"><b>この回答について：</b>アプリ内のデータを決まった手順でまとめたもので、AIの判断ではありません。「買い」「売り」の判断は行いませんので、最終判断はご自身でお願いします。
+      <ul><li>データ：Yahoo!ファイナンスの日足。過去検証は${esc(DATA.backtest.from)}以降</li>
+      <li>過去の成績：サインの翌営業日の始値で買い、20営業日目の終値で売却した計算。1回${yen(btAmount)}の手数料を差し引き、配当・税金は含みません</li>
+      <li>サインが何営業日か前のものは、検証の買うタイミングとずれています</li>
+      <li>損切り価格は「現在値 − 平均的な値動きの2倍」の仮の値です。決算予定日は変わることがあります。過去の結果は将来の利益を保証しません</li></ul></div>`;
+  out.querySelectorAll("[data-askcalc]").forEach(b => b.onclick = () => { calcSym = b.dataset.askcalc; renderCalc(); showView("calc"); });
+}
+function renderAsk() {
+  const el = document.getElementById("ask");
+  const samples = ["今日、トヨタの株を買おうと思う", "三菱UFJはどう？", "任天堂とソニーを比べたい"];
+  el.innerHTML = `<h2>質問箱</h2>
+    <div class="muted">銘柄名を入れて質問すると、今の状態と過去の成績をまとめて表示します。</div>
+    <form class="ask-form" id="ask-form"><input id="ask-q" enterkeyhint="send" autocomplete="off" placeholder="例：今日、トヨタの株を買おうと思う"><button class="btn">質問</button></form>
+    <div class="ranges">${samples.map(s => `<button type="button" data-s="${esc(s)}">${esc(s)}</button>`).join("")}</div>
+    <div id="ask-out"></div>`;
+  const input = el.querySelector("#ask-q");
+  el.querySelector("#ask-form").onsubmit = e => {
+    e.preventDefault();
+    if (input.value.trim()) { askRun(input.value.trim()); input.blur(); }
+  };
+  el.querySelectorAll("[data-s]").forEach(b => b.onclick = () => { input.value = b.dataset.s; askRun(b.dataset.s); });
+  let last = "";
+  try { last = sessionStorage.getItem("ask") || ""; } catch {}
+  if (last) { input.value = last; askRun(last); }  // 自動の再読み込み後も回答を残す
+}
+
 // ---------------------------------------------------------------- 画面の切り替えと初期表示
-const VIEWS = [["home", "ホーム"], ["test", "サイン検証"], ["screen", "絞り込み"], ["calc", "損切り計算"], ["log", "取引記録"]];
+const VIEWS = [["home", "ホーム"], ["ask", "質問箱"], ["test", "サイン検証"], ["screen", "絞り込み"], ["calc", "損切り計算"], ["log", "取引記録"]];
 let view = "home";
 function showView(v) {
   view = v;
+  try { sessionStorage.setItem("view", v); } catch {}
   document.getElementById("views").innerHTML = VIEWS.map(x => `<button class="${x[0] === v ? "on" : ""}" data-v="${x[0]}">${x[1]}</button>`).join("");
   document.querySelectorAll("#views button").forEach(b => b.onclick = () => showView(b.dataset.v));
   document.querySelectorAll("main [data-view]").forEach(e => e.hidden = e.dataset.view !== v);
@@ -789,9 +945,11 @@ if (!DATA) {
   document.getElementById("updated").textContent = "最終更新: " + DATA.generated + "（1時間ごとに自動更新）";
   document.getElementById("mnews").innerHTML = newsList(DATA.marketNews);
   selected = DATA.tickers[0]?.symbol;
-  showView("home");
+  let startView = "home";
+  try { startView = sessionStorage.getItem("view") || "home"; } catch {}
+  showView(VIEWS.some(x => x[0] === startView) ? startView : "home");
   renderRegime(); renderTabs(); renderGrid(); renderDetail();
-  renderHold(); renderTest(); renderScreen(); renderCalc(); renderLog();
+  renderHold(); renderTest(); renderScreen(); renderCalc(); renderLog(); renderAsk();
 }
 
 // 15分ごとに最新データへ再読み込み（入力中は待つ）
